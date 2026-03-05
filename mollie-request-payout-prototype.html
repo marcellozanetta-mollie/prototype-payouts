@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mollie — Request Payout Prototype</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; font-style: normal !important; }
+  body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+  @keyframes dropIn { from { opacity:0; transform:translateY(-4px); } to { opacity:1; transform:translateY(0); } }
+  @keyframes modalIn { from { opacity:0; transform:translateY(16px) scale(0.98); } to { opacity:1; transform:translateY(0) scale(1); } }
+  @keyframes overlayIn { from { background-color: rgba(0,0,0,0); } to { background-color: rgba(0,0,0,0.4); } }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script>
+const e = React.createElement;
+const { useState, useRef, useEffect, useCallback } = React;
+
+const T = {
+  textPrimary: "#121110",
+  textSecondary: "#595653",
+  textMuted: "#7D7975",
+  textDisabledAmount: "#B2AEAA",
+  border: "#E0DDDA",
+  borderFocus: "#458FFF",
+  footerBg: "#FCFBFA",
+  avatarBg: "#F5F2F0",
+  inputBgDisabled: "#F5F2F0",
+  detailBorder: "#F5F2F0",
+  toggleOn: "#32AD30",
+  toggleOff: "#C2BEBA",
+  btnPrimary: "#331300",
+  btnDisabled: "#E0DDDA",
+  btnDisabledText: "#B2AEAA",
+  accentBlue: "#0040FF",
+  accentGreen: "#0cb04a",
+  shadow: "0px 1.5px 2px 0px rgba(16,24,40,0.02)",
+  radius: 8,
+  font: '"Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif',
+};
+
+const ACCOUNTS = [
+  { id:"ing", label:"NL29 INGB 0126 9425 90", subtitle:"Earliest \u00b7 Tomorrow", amount:16547.31, caption:"Estimated available tomorrow: \u20ac16,547.31", amountLabel:"Estimated amount", payoutLabel:"Payout", payoutValue:"Tomorrow", feeValue:"\u20ac0,25", feeColor:T.textSecondary, upsell:"Instant payout with Mollie Business account", icon:"ing", displayName:null },
+  { id:"main", label:"Main Account", subtitle:"Instant payout \u00b7 Funds sent immediately", amount:15327.67, caption:"Available now: \u20ac15,327.67", amountLabel:"Amount", payoutLabel:"Payout", payoutValue:"Now", feeValue:"Free", feeColor:T.accentGreen, upsell:null, icon:"bank", displayName:"Main account" },
+  { id:"abna", label:"NL29 ABNA 0126 9425 63", subtitle:"Earliest \u00b7 Tomorrow", amount:16547.31, caption:"Estimated available tomorrow: \u20ac16,547.31", amountLabel:"Estimated amount", payoutLabel:"Payout", payoutValue:"Tomorrow", feeValue:"\u20ac0,25", feeColor:T.textSecondary, upsell:"Instant payout with Mollie Business account", icon:"abna", displayName:null },
+];
+
+function formatEuro(v) { return "\u20ac" + v.toLocaleString("en-US", { minimumFractionDigits:2, maximumFractionDigits:2 }); }
+
+const ICON_ING = "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0nMzInIGhlaWdodD0nMzInIHZpZXdCb3g9JzAgMCAzMiAzMicgZmlsbD0nbm9uZScgeG1sbnM9J2h0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnJz4KPGcgY2xpcC1wYXRoPSd1cmwoI2NsaXAwXzUyNF80MjA2NCknPgo8cGF0aCBkPSdNMjQgMEg4QzMuNTgxNzIgMCAwIDMuNTgxNzIgMCA4VjI0QzAgMjguNDE4MyAzLjU4MTcyIDMyIDggMzJIMjRDMjguNDE4MyAzMiAzMiAyOC40MTgzIDMyIDI0VjhDMzIgMy41ODE3MiAyOC40MTgzIDAgMjQgMFonIGZpbGw9JyNGRjUzMDAnLz4KPC9nPgo8ZGVmcz4KPGNsaXBQYXRoIGlkPSdjbGlwMF81MjRfNDIwNjQnPgo8cmVjdCB3aWR0aD0nMzInIGhlaWdodD0nMzInIHJ4PSc4JyBmaWxsPSd3aGl0ZScvPgo8L2NsaXBQYXRoPgo8L2RlZnM+Cjwvc3ZnPgo=";
+const ICON_BANK = "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0nMTInIGhlaWdodD0nMTInIHZpZXdCb3g9JzAgMCAxMiAxMicgZmlsbD0nbm9uZScgeG1sbnM9J2h0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnJz4KPHBhdGggZD0nTTEwIDMuODgxNUMxMCAzLjgzNjggOS45NzQ1NiAzLjc5NTU0IDkuOTM0NTcgMy43NzU1NUw2LjIyMzYzIDEuOTIwMDhDNi4wODI4NyAxLjg0OTcgNS45MTcxMyAxLjg0OTcgNS43NzYzNyAxLjkyMDA4TDIuMDY1NDMgMy43NzU1NUMyLjAyNTQ0IDMuNzk1NTQgMiAzLjgzNjggMiAzLjg4MTVDMi4wMDAxMiAzLjk0NjU5IDIuMDUzMDUgMy45OTkxOCAyLjExODE2IDMuOTk5MThIOS44ODE4NEM5Ljk0Njk1IDMuOTk5MTggOS45OTk4OCAzLjk0NjU5IDEwIDMuODgxNVpNMi43MjA3IDguOTk5MThDMi41MDU2IDguOTk5MiAyLjMxNDcgOS4xMzY5NiAyLjI0NjU4IDkuMzQwOThMMi4xOTM4NSA5LjQ5OTE4SDkuODA2MTVMOS43NTM0MiA5LjM0MDk4QzkuNjkzNzggOS4xNjIzOCA5LjU0MDEgOS4wMzQ1OSA5LjM1ODQgOS4wMDU1M0w5LjI3OTMgOC45OTkxOEgyLjcyMDdaTTggNy45OTkxOEg5VjQuOTk5MThIOFY3Ljk5OTE4Wk01IDcuOTk5MThIN1Y0Ljk5OTE4SDVWNy45OTkxOFpNMyA3Ljk5OTE4SDRWNC45OTkxOEgzVjcuOTk5MThaTTExIDMuODgxNUMxMC45OTk5IDQuNDU4OTggMTAuNTYxOSA0LjkzMzM1IDEwIDQuOTkyMzRWOC4xODQ3M0MxMC4zMjQxIDguMzYyNTIgMTAuNTc5NyA4LjY1NzYgMTAuNzAyMSA5LjAyNTA2TDEwLjc1NDkgOS4xODMyNkMxMC45NzA2IDkuODMwNzUgMTAuNDg4NyAxMC40OTkyIDkuODA2MTUgMTAuNDk5MkgyLjE5Mzg1QzEuNTExMzQgMTAuNDk5MiAxLjAyOTM5IDkuODMwNzUgMS4yNDUxMiA5LjE4MzI2TDEuMjk3ODUgOS4wMjUwNkMxLjQyMDM0IDguNjU3NiAxLjY3NTkyIDguMzYyNTIgMiA4LjE4NDczVjQuOTkyMzRDMS40MzgxMyA0LjkzMzM1IDEuMDAwMTIgNC40NTg5OCAxIDMuODgxNUMxIDMuNDU4MDIgMS4yMzkzOSAzLjA3MDg5IDEuNjE4MTYgMi44ODE1TDUuMzI5MSAxLjAyNTU1QzUuNzUxMzkgMC44MTQ0MDEgNi4yNDg2MSAwLjgxNDQwMSA2LjY3MDkgMS4wMjU1NUwxMC4zODE4IDIuODgxNUMxMC43NjA2IDMuMDcwODkgMTEgMy40NTgwMiAxMSAzLjg4MTVaJyBmaWxsPScjMzgzNjMzJy8+Cjwvc3ZnPgo=";
+const ICON_INFO = "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTYiIGhlaWdodD0iMTYiIHZpZXdCb3g9IjAgMCAxNiAxNiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZmlsbC1ydWxlPSJldmVub2RkIiBjbGlwLXJ1bGU9ImV2ZW5vZGQiIGQ9Ik04IDJDMTEuMzEzNyAyIDE0IDQuNjg2MjkgMTQgOEMxNCAxMS4zMTM3IDExLjMxMzcgMTQgOCAxNEM0LjY4NjI5IDE0IDIgMTEuMzEzNyAyIDhDMiA0LjY4NjI5IDQuNjg2MjkgMiA4IDJaTTcuOTg3MTggMy4zODQ2MkM4LjMyMDUxIDMuMzg0NjIgOC42MDI1NiAzLjQ4NzkgOC44MjA1MSAzLjcyMDI4QzkuMDUxMjggMy45Mzk3NSA5LjE1Mzg1IDQuMjEwODcgOS4xNTM4NSA0LjUyMDcxQzkuMTUzODUgNC44MzA1NSA5LjA1MTI4IDUuMTAxNjcgOC44MjA1MSA1LjMyMTE0QzguNjAyNTYgNS41Mjc3IDguMzIwNTEgNS42NDM4OSA3Ljk4NzE4IDUuNjQzODlDNy42NTM4NSA1LjY0MzkgNy4zODQ2MSA1LjUyNzcgNy4xNjY2NyA1LjMyMTE0QzYuOTYxNTQgNS4xMDE2NyA2Ljg0NjE1IDQuODMwNTUgNi44NDYxNSA0LjUyMDcxQzYuODQ2MTUgNC4yMTA4NyA2Ljk2MTU0IDMuOTM5NzUgNy4xNjY2NyAzLjcyMDI4QzcuMzg0NjEgMy40ODc5IDcuNjUzODUgMy4zODQ2MiA3Ljk4NzE4IDMuMzg0NjJaTTYuMzg0NjIgOEg3LjA3NjkyVjEwLjc2OTJINi4zODQ2MkM2LjAwMjI2IDEwLjc2OTIgNS42OTIzMSAxMS4wNzkyIDUuNjkyMzEgMTEuNDYxNUM1LjY5MjMxIDExLjg0MzkgNi4wMDIyNiAxMi4xNTM4IDYuMzg0NjIgMTIuMTUzOEg5LjYxNTM4QzkuOTk3NzQgMTIuMTUzOCAxMC4zMDc3IDExLjg0MzkgMTAuMzA3NyAxMS40NjE1QzEwLjMwNzcgMTEuMDc5MiA5Ljk5Nzc0IDEwLjc2OTIgOS42MTUzOCAxMC43NjkySDguOTIzMDhWNy41Mzg0NkM4LjkyMzA4IDcuNDk2NSA4LjkyMDI4IDcuNDU1MTkgOC45MTQ4NiA3LjQxNDcyQzguOTIwMjcgNy4zNzk4NCA4LjkyMzA4IDcuMzQ0MDkgOC45MjMwOCA3LjMwNzY5QzguOTIzMDggNi45MjUzNCA4LjYxMzEyIDYuNjE1MzggOC4yMzA3NyA2LjYxNTM4SDYuMzg0NjJDNi4wMDIyNiA2LjYxNTM4IDUuNjkyMzEgNi45MjUzNCA1LjY5MjMxIDcuMzA3NjlDNS42OTIzMSA3LjY5MDA0IDYuMDAyMjYgOCA2LjM4NDYyIDhaIiBmaWxsPSIjNTk1NjUzIi8+Cjwvc3ZnPgo=";
+const ICON_CHECK = "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0nMTYnIGhlaWdodD0nMTYnIHZpZXdCb3g9JzAgMCAxNiAxNicgZmlsbD0nbm9uZScgeG1sbnM9J2h0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnJz4KPHBhdGggZD0nTTEwLjcxOTcgNC40NTA0NkMxMC45NzQ4IDQuMDE5NyAxMS41Mzk3IDMuODcyMTEgMTEuOTgxNiA0LjEyMDgxQzEyLjQyMzQgNC4zNjk1MSAxMi41NzQ3IDQuOTIwMzIgMTIuMzE5NyA1LjM1MTA4TDguNjQ5MTQgMTEuNTQ5NUM4LjM5NDA2IDExLjk4MDMgNy44MjkxMSAxMi4xMjc5IDcuMzg3MyAxMS44NzkyQzYuOTQ1NDggMTEuNjMwNSA2Ljc5NDExIDExLjA3OTcgNy4wNDkxOSAxMC42NDg5TDEwLjcxOTcgNC40NTA0NlonIGZpbGw9JyMwMDQwRkYnLz4KPHBhdGggZD0nTTMuODI1MjQgOC40MjUyN0MzLjQ2NDUgOC4wNzM1NiAzLjQ2NDUgNy41MDMzMiAzLjgyNTI0IDcuMTUxNkM0LjE4NTk4IDYuNzk5ODkgNC43NzA4NSA2Ljc5OTg5IDUuMTMxNTkgNy4xNTE2TDguNDYwNDIgMTAuNDE5NEM4LjgyMTE2IDEwLjc3MTEgOC44MjExNiAxMS4zNDEzIDguNDYwNDIgMTEuNjkzQzguMDk5NjggMTIuMDQ0OCA3LjUxNDgxIDEyLjA0NDggNy4xNTQwNyAxMS42OTNMMy44MjUyNCA4LjQyNTI3WicgZmlsbD0nIzAwNDBGRicvPgo8L3N2Zz4K";
+const ICON_CLOSE = "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0nMjAnIGhlaWdodD0nMjAnIHZpZXdCb3g9JzAgMCAyMCAyMCcgZmlsbD0nbm9uZScgeG1sbnM9J2h0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnJz4KPHBhdGggZmlsbC1ydWxlPSdldmVub2RkJyBjbGlwLXJ1bGU9J2V2ZW5vZGQnIGQ9J00yLjgwNTEgMi44MDUxQzMuMjExODkgMi4zOTgzIDMuODcxNDQgMi4zOTgzIDQuMjc4MjQgMi44MDUxTDEwIDguNTI2ODZMMTUuNzIxOCAyLjgwNTFDMTYuMTI4NiAyLjM5ODMgMTYuNzg4MSAyLjM5ODMgMTcuMTk0OSAyLjgwNTFDMTcuNjAxNyAzLjIxMTg5IDE3LjYwMTcgMy44NzE0NCAxNy4xOTQ5IDQuMjc4MjRMMTEuNDczMSAxMEwxNy4xOTQ5IDE1LjcyMThDMTcuNjAxNyAxNi4xMjg2IDE3LjYwMTcgMTYuNzg4MSAxNy4xOTQ5IDE3LjE5NDlDMTYuNzg4MSAxNy42MDE3IDE2LjEyODYgMTcuNjAxNyAxNS43MjE4IDE3LjE5NDlMMTAgMTEuNDczMUw0LjI3ODI0IDE3LjE5NDlDMy44NzE0NCAxNy42MDE3IDMuMjExODkgMTcuNjAxNyAyLjgwNTEgMTcuMTk0OUMyLjM5ODMgMTYuNzg4MSAyLjM5ODMgMTYuMTI4NiAyLjgwNTEgMTUuNzIxOEw4LjUyNjg2IDEwTDIuODA1MSA0LjI3ODI0QzIuMzk4MyAzLjg3MTQ0IDIuMzk4MyAzLjIxMTg5IDIuODA1MSAyLjgwNTFaJyBmaWxsPScjMTIxMTEwJy8+Cjwvc3ZnPgo=";
+const ICON_CHEVRON = "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0nMTYnIGhlaWdodD0nMTYnIHZpZXdCb3g9JzAgMCAxNiAxNicgZmlsbD0nbm9uZScgeG1sbnM9J2h0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnJz4KPHBhdGggZD0nTTMuMjA5MTYgNS4yMTg0N0MzLjUwMjU5IDQuOTExOTggMy45OTU3NyA0LjkzMDE4IDQuMzEwNyA1LjI1OTEzTDguNDkyMzcgOS42MjY5NUM4LjgwNzI5IDkuOTU1OSA4LjgyNDcyIDEwLjQ3MSA4LjUzMTI5IDEwLjc3NzVDOC4yMzc4NiAxMS4wODQgNy43NDQ2OCAxMS4wNjU4IDcuNDI5NzYgMTAuNzM2OUwzLjI0ODA5IDYuMzY5MDRDMi45MzMxNiA2LjA0MDA5IDIuOTE1NzMgNS41MjQ5NyAzLjIwOTE2IDUuMjE4NDdaJyBmaWxsPScjMTIxMTEwJy8+CjxwYXRoIGQ9J00xMi43OTA4IDUuMjE4NDlDMTMuMDg0MyA1LjUyNDk4IDEzLjA2NjggNi4wNDAxMSAxMi43NTE5IDYuMzY5MDVMOC41NzAyNCAxMC43MzY5QzguMjU1MzIgMTEuMDY1OCA3Ljc2MjE0IDExLjA4NCA3LjQ2ODcxIDEwLjc3NzVDNy4xNzUyOCAxMC40NzEgNy4xOTI3MSA5Ljk1NTkxIDcuNTA3NjMgOS42MjY5NkwxMS42ODkzIDUuMjU5MTRDMTIuMDA0MiA0LjkzMDE5IDEyLjQ5NzQgNC45MTE5OSAxMi43OTA4IDUuMjE4NDlaJyBmaWxsPScjMTIxMTEwJy8+Cjwvc3ZnPgo=";
+
+function Img(src,w,h,s){return e("img",{src:src,alt:"",width:w,height:h,style:Object.assign({flexShrink:0},s||{})});}
+function INGLogo(p){return Img(ICON_ING,p.size||32,p.size||32,{borderRadius:8});}
+function BankIcon(p){var s=p.size||24;return e("div",{style:{width:s,height:s,borderRadius:6,backgroundColor:T.avatarBg,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}},Img(ICON_BANK,12,12));}
+function ABNALogo(p){var s=p.size||24;return e("div",{style:{width:s,height:s,borderRadius:6,backgroundColor:"#009586",flexShrink:0,overflow:"hidden",position:"relative"}},e("div",{style:{position:"absolute",top:8,left:10,width:0,height:0,borderTop:"4.5px solid transparent",borderBottom:"4.5px solid transparent",borderLeft:"5px solid #FCBF00"}}));}
+function AccountIcon(p){if(p.icon==="ing")return e(INGLogo,{size:p.size||32});if(p.icon==="bank")return e(BankIcon,{size:p.size||24});if(p.icon==="abna")return e(ABNALogo,{size:p.size||24});return null;}
+function CheckIcon(){return Img(ICON_CHECK,16,16);}
+function InfoIcon(){return Img(ICON_INFO,16,16,{cursor:"pointer"});}
+function CloseIcon(){return Img(ICON_CLOSE,20,20,{display:"block"});}
+function ChevronDown(){return Img(ICON_CHEVRON,16,16);}
+function ArrowDownLeft(p){var c=p.color||"white";return e("svg",{width:16,height:16,viewBox:"0 0 16 16",fill:"none",style:{flexShrink:0}},e("path",{d:"M3.334 6c0-.368.298-.667.666-.667.369 0 .667.299.667.667v5.333h5.334c.368 0 .666.299.666.667 0 .368-.298.667-.666.667H4c-.368 0-.666-.299-.666-.667V6z",fill:c}),e("path",{d:"M11.363 3.695a.667.667 0 01.942.943L5.139 11.805a.667.667 0 01-.943-.943l7.167-7.167z",fill:c}));}
+
+function Toggle(p){
+  return e("button",{onClick:p.onChange,role:"switch","aria-checked":p.checked,style:{width:30,height:20,borderRadius:9999,border:"none",cursor:"pointer",padding:2,backgroundColor:p.checked?T.toggleOn:T.toggleOff,transition:"background-color 0.2s",display:"flex",alignItems:"center",flexShrink:0,outline:"none"}},
+    e("div",{style:{width:16,height:16,borderRadius:"50%",backgroundColor:"#fff",transition:"transform 0.2s cubic-bezier(.4,0,.2,1)",transform:p.checked?"translateX(10px)":"translateX(0px)",boxShadow:"0 1px 2px rgba(0,0,0,0.2)"}})
+  );
+}
+
+function AccountDropdown(p){
+  var dropRef=useRef(null);
+  useEffect(function(){
+    var handler=function(ev){if(dropRef.current&&!dropRef.current.contains(ev.target))p.onClose();};
+    document.addEventListener("mousedown",handler);
+    return function(){document.removeEventListener("mousedown",handler);};
+  },[p.onClose]);
+  return e("div",{ref:dropRef,style:{position:"absolute",top:"100%",left:0,right:0,marginTop:4,border:"1px solid "+T.border,borderRadius:6,backgroundColor:"#fff",boxShadow:"0 8px 24px rgba(0,0,0,0.12), 0 2px 8px rgba(0,0,0,0.06)",overflow:"hidden",zIndex:10,animation:"dropIn 0.15s ease-out"}},
+    p.accounts.map(function(acc){
+      return e("div",{key:acc.id,onClick:function(){p.onSelect(acc.id);p.onClose();},
+        style:{display:"flex",alignItems:"center",gap:8,padding:"10px 12px",cursor:"pointer",backgroundColor:"#fff",transition:"background-color 0.1s"},
+        onMouseEnter:function(ev){ev.currentTarget.style.backgroundColor=T.footerBg;},
+        onMouseLeave:function(ev){ev.currentTarget.style.backgroundColor="#fff";}},
+        e(AccountIcon,{icon:acc.icon,size:24}),
+        e("div",{style:{flex:1,display:"flex",flexDirection:"column",gap:2}},
+          e("span",{style:{fontSize:14,fontWeight:500,color:T.textPrimary,lineHeight:"130%"}},acc.displayName||acc.label),
+          e("span",{style:{fontSize:14,fontWeight:400,color:T.textSecondary,lineHeight:"130%"}},acc.subtitle)
+        ),
+        acc.id===p.selectedId?e(CheckIcon):null
+      );
+    })
+  );
+}
+
+function App(){
+  var _s=useState("ing"),selectedAccountId=_s[0],setSelectedAccountId=_s[1];
+  var _f=useState(true),isFullAmount=_f[0],setIsFullAmount=_f[1];
+  var _a=useState(ACCOUNTS[0].amount),amount=_a[0],setAmount=_a[1];
+  var _iv=useState(""),inputValue=_iv[0],setInputValue=_iv[1];
+  var _ed=useState(false),isEditing=_ed[0],setIsEditing=_ed[1];
+  var _dd=useState(false),dropdownOpen=_dd[0],setDropdownOpen=_dd[1];
+  var _v=useState(true),visible=_v[0],setVisible=_v[1];
+  var _ai=useState(false),animateIn=_ai[0],setAnimateIn=_ai[1];
+  var inputRef=useRef(null);
+
+  var account=ACCOUNTS.find(function(a){return a.id===selectedAccountId;});
+  useEffect(function(){if(visible)requestAnimationFrame(function(){requestAnimationFrame(function(){setAnimateIn(true);});});},[visible]);
+
+  var isDisabled=!isFullAmount&&amount===0;
+  var displayAmount=isFullAmount?account.amount:amount;
+  var isFocused=isEditing&&!isFullAmount;
+  var inputAreaBg=isFullAmount?T.inputBgDisabled:"#fff";
+  var amountColor=isFullAmount?T.textDisabledAmount:T.textPrimary;
+
+  var switchToCustom=useCallback(function(){setIsFullAmount(false);setAmount(0);setIsEditing(true);setInputValue("");setTimeout(function(){if(inputRef.current)inputRef.current.focus();},50);},[]);
+  var switchToFull=useCallback(function(){setIsFullAmount(true);setAmount(account.amount);setIsEditing(false);setInputValue("");},[account.amount]);
+  var handleToggle=useCallback(function(){isFullAmount?switchToCustom():switchToFull();},[isFullAmount,switchToCustom,switchToFull]);
+  var handleAmountClick=useCallback(function(){if(isFullAmount)switchToCustom();else if(!isEditing){setIsEditing(true);setInputValue(amount>0?amount.toString().replace(".",","):"");setTimeout(function(){if(inputRef.current)inputRef.current.focus();},50);}},[isFullAmount,isEditing,amount,switchToCustom]);
+  var handleInputChange=useCallback(function(ev){var val=ev.target.value.replace(/[^0-9.,]/g,"");setInputValue(val);setAmount(parseFloat(val.replace(",","."))||0);},[]);
+  var handleInputBlur=useCallback(function(){if(!inputValue||parseFloat(inputValue.replace(",","."))=== 0)setAmount(0);setIsEditing(false);},[inputValue]);
+  var handleSelectAccount=useCallback(function(id){var acc=ACCOUNTS.find(function(a){return a.id===id;});setSelectedAccountId(id);if(isFullAmount)setAmount(acc.amount);},[isFullAmount]);
+  var handleClose=function(){setAnimateIn(false);setTimeout(function(){setVisible(false);setTimeout(function(){setSelectedAccountId("ing");setIsFullAmount(true);setAmount(ACCOUNTS[0].amount);setIsEditing(false);setInputValue("");setDropdownOpen(false);setVisible(true);},400);},180);};
+
+  var detailRows=[
+    {label:account.amountLabel,value:formatEuro(displayAmount),color:T.textSecondary},
+    {label:account.payoutLabel,value:account.payoutValue,color:T.textSecondary},
+    {label:"Payout fee",value:account.feeValue,color:account.feeColor,hasInfo:true},
+  ];
+
+  var amountDisplay=isFullAmount
+    ?account.amount.toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2})
+    :amount===0?"0":amount.toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2});
+
+  return e("div",{style:{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",backgroundColor:"#edece8",fontFamily:T.font}},
+    visible?e("div",{onClick:handleClose,style:{position:"fixed",inset:0,backgroundColor:animateIn?"rgba(0,0,0,0.4)":"rgba(0,0,0,0)",transition:"background-color 0.2s ease",display:"flex",alignItems:"center",justifyContent:"center",zIndex:100,padding:20}},
+      e("div",{onClick:function(ev){ev.stopPropagation();},style:{width:"100%",maxWidth:440,height:740,backgroundColor:"#fff",borderRadius:16,boxShadow:"0 24px 80px rgba(0,0,0,0.16), 0 2px 8px rgba(0,0,0,0.06)",transform:animateIn?"translateY(0) scale(1)":"translateY(16px) scale(0.98)",opacity:animateIn?1:0,transition:"all 0.25s cubic-bezier(0.22,1,0.36,1)",overflow:"hidden",display:"flex",flexDirection:"column"}},
+
+        // HEADER
+        e("div",{style:{display:"flex",alignItems:"center",padding:"32px 24px 0 32px",position:"relative"}},
+          e("div",{style:{display:"flex",alignItems:"flex-start",gap:8,paddingRight:48,flexGrow:1}},
+            e("span",{style:{fontSize:22,fontWeight:600,color:T.textPrimary,lineHeight:"130%"}},"Request payout")
+          ),
+          e("button",{onClick:handleClose,style:{backgroundColor:"transparent",border:"none",cursor:"pointer",display:"flex",padding:4,borderRadius:8}},e(CloseIcon))
+        ),
+
+        // MAIN
+        e("div",{style:{display:"flex",flexDirection:"column",alignItems:"center",gap:24,padding:"12px 32px 32px",flex:1}},
+
+          // Subtitle
+          e("div",{style:{alignSelf:"stretch"}},
+            e("span",{style:{fontSize:16,fontWeight:400,color:T.textSecondary,lineHeight:"130%"}},"An on-demand payout won\u2019t affect your regular payout schedule")
+          ),
+
+          // AMOUNT
+          e("div",{style:{display:"flex",flexDirection:"column",gap:4,alignSelf:"stretch"}},
+            e("span",{style:{fontSize:14,fontWeight:500,color:T.textSecondary,lineHeight:"130%"}},"Amount"),
+            e("div",{style:{borderRadius:T.radius,overflow:"hidden",boxShadow:T.shadow}},
+              // Input area
+              e("div",{onClick:handleAmountClick,style:{display:"flex",alignItems:"flex-start",gap:8,padding:"16px 8px 16px 12px",backgroundColor:isFocused?"#fff":inputAreaBg,border:isFocused?"2px solid "+T.borderFocus:"1px solid "+T.border,borderBottom:isFocused?"2px solid "+T.borderFocus:"none",borderRadius:"8px 8px 0 0",cursor:"text",transition:"background-color 0.15s"}},
+                isFocused
+                  ?e("div",{style:{display:"flex",alignItems:"center",flex:1}},
+                    e("span",{style:{fontSize:26,fontWeight:600,color:T.textPrimary,lineHeight:"130%"}},"\u20ac"),
+                    e("input",{ref:inputRef,type:"text",inputMode:"decimal",value:inputValue,onChange:handleInputChange,onBlur:handleInputBlur,placeholder:"0",autoFocus:true,style:{border:"none",outline:"none",fontSize:26,fontWeight:600,color:T.textPrimary,width:"100%",backgroundColor:"transparent",fontFamily:T.font,padding:0,margin:0,lineHeight:"130%",caretColor:T.textPrimary}})
+                  )
+                  :e("span",{style:{fontSize:26,fontWeight:600,color:amountColor,lineHeight:"130%",flex:1}},"\u20ac"+amountDisplay)
+              ),
+              // Footer
+              e("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,padding:12,backgroundColor:T.footerBg,borderRadius:"0 0 8px 8px",border:"1px solid "+T.border,overflow:"hidden"}},
+                e("div",{style:{display:"flex",alignItems:"center",gap:4}},
+                  e("span",{style:{fontSize:14,fontWeight:400,color:T.textSecondary,lineHeight:"130%"}},"Full amount"),
+                  e(InfoIcon)
+                ),
+                e(Toggle,{checked:isFullAmount,onChange:handleToggle})
+              )
+            ),
+            e("span",{style:{fontSize:12,fontWeight:400,color:T.textSecondary,lineHeight:"130%"}},account.caption)
+          ),
+
+          // DESTINATION
+          e("div",{style:{display:"flex",flexDirection:"column",gap:4,alignSelf:"stretch"}},
+            e("span",{style:{fontSize:14,fontWeight:500,color:T.textSecondary,lineHeight:"130%"}},"Payout will be sent to"),
+            e("div",{style:{position:"relative"}},
+              e("div",{onClick:function(){setDropdownOpen(!dropdownOpen);},style:{backgroundColor:"#fff",display:"flex",alignItems:"center",gap:16,padding:12,borderRadius:T.radius,border:"1px solid "+T.border,boxShadow:T.shadow,overflow:"hidden",cursor:"pointer"}},
+                e("div",{style:{display:"flex",alignItems:"center",gap:10,flexGrow:1}},
+                  e(AccountIcon,{icon:account.icon,size:account.icon==="ing"?32:24}),
+                  e("span",{style:{fontSize:14,fontWeight:400,color:T.textPrimary,lineHeight:"130%",flexGrow:1}},account.displayName||account.label),
+                  e(ChevronDown)
+                )
+              ),
+              dropdownOpen?e(AccountDropdown,{accounts:ACCOUNTS,selectedId:selectedAccountId,onSelect:handleSelectAccount,onClose:function(){setDropdownOpen(false);}}):null
+            )
+          ),
+
+          // PAYOUT DETAILS
+          e("div",{style:{display:"flex",flexDirection:"column",gap:8,alignSelf:"stretch"}},
+            e("span",{style:{fontSize:14,fontWeight:500,color:T.textMuted,lineHeight:"130%"}},"Payout details"),
+            e("div",{style:{display:"flex",flexDirection:"column",padding:"0 16px",borderRadius:12,border:"1px solid "+T.detailBorder}},
+              detailRows.map(function(row,i){
+                return e("div",{key:i,style:{display:"flex",alignItems:"center",gap:12,padding:"12px 0",borderTop:i>0?"1px solid "+T.detailBorder:"none"}},
+                  e("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:12,flexGrow:1}},
+                    e("div",{style:{display:"flex",alignItems:"center",gap:2}},
+                      e("span",{style:{fontSize:14,fontWeight:500,color:T.textPrimary,lineHeight:"130%"}},row.label),
+                      row.hasInfo?e(InfoIcon):null
+                    ),
+                    e("span",{style:{fontSize:14,fontWeight:400,color:row.color,lineHeight:"130%",textAlign:"right"}},row.value)
+                  )
+                );
+              })
+            )
+          ),
+
+          // FOOTER
+          e("div",{style:{display:"flex",flexDirection:"column",alignSelf:"stretch",marginTop:"auto",gap:16}},
+            e("div",{style:{display:"flex",justifyContent:"center",alignItems:"center",height:16}},
+              e("span",{style:{fontSize:12,fontWeight:400,color:T.textSecondary,lineHeight:"130%",textAlign:"center"}},account.upsell||"\u00A0")
+            ),
+            e("button",{disabled:isDisabled,style:{backgroundColor:isDisabled?T.btnDisabled:T.btnPrimary,height:48,display:"flex",justifyContent:"center",alignItems:"center",alignSelf:"stretch",borderRadius:T.radius,border:"none",cursor:isDisabled?"not-allowed":"pointer",transition:"background-color 0.15s ease"},
+              onMouseEnter:function(ev){if(!isDisabled)ev.currentTarget.style.backgroundColor="#4a2800";},
+              onMouseLeave:function(ev){if(!isDisabled)ev.currentTarget.style.backgroundColor=T.btnPrimary;}},
+              e("div",{style:{display:"flex",justifyContent:"center",alignItems:"center",gap:8}},
+                e(ArrowDownLeft,{color:isDisabled?T.btnDisabledText:"white"}),
+                e("span",{style:{fontSize:16,fontWeight:500,color:isDisabled?T.btnDisabledText:"#fff",lineHeight:"130%"}},"Request payout")
+              )
+            )
+          )
+        )
+      )
+    ):null
+  );
+}
+
+ReactDOM.render(e(App), document.getElementById("root"));
+</script>
+</body>
+</html>
